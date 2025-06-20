@@ -2,6 +2,9 @@ package com.profittracker;
 
 import com.google.inject.Provides;
 import javax.inject.Inject;
+
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.*;
 
@@ -12,26 +15,46 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.overlay.OverlayManager;
+import net.runelite.client.util.ImageUtil;
+
+import java.awt.image.BufferedImage;
 
 @Slf4j
 @PluginDescriptor(
         name = "Profit Tracker"
 )
+
+
 public class ProfitTrackerPlugin extends Plugin
 {
     ProfitTrackerGoldDrops goldDropsObject;
     ProfitTrackerInventoryValue inventoryValueObject;
+    @Inject
+    private ConfigManager configManager;
+    private static final BufferedImage ICON = ImageUtil.loadImageResource(ProfitTrackerPlugin.class, "gp.jpg");
+
+    private static final String CONFIG_GROUP = "profittracker";
+    private static final String TOTAL_PROFIT_KEY = "totalProfit";
+    private static final String SECONDS_ELAPSED_KEY  = "secondsElapsed";
+    private static final String START_TICK_MILLIS  = "startTickMillis";
+    @Getter @Setter
+    private boolean isRunning = false;
 
     // the profit will be calculated against this value
     private long prevInventoryValue;
     private long totalProfit;
-
+    @Getter @Setter
     private long startTickMillis;
+    @Getter @Setter
+    private long secondsElapsed;
 
     private boolean skipTickForProfitCalculation;
     private boolean inventoryValueChanged;
     private boolean inProfitTrackSession;
+    private boolean resetFlag = false;
 
     @Inject
     private Client client;
@@ -48,11 +71,37 @@ public class ProfitTrackerPlugin extends Plugin
     @Inject
     private ProfitTrackerOverlay overlay;
 
+    @Inject
+    private ClientToolbar clientToolbar;
+
+    private ProfitTrackerPanel panel;
+
+    private NavigationButton navButton;
+
+    @Subscribe
+    public void onGameStateChanged(net.runelite.api.events.GameStateChanged event) throws Exception {
+        GameState state = event.getGameState();
+
+        if (state == GameState.LOGGED_IN)
+        {
+            // Player just logged in
+            System.out.println("Player logged in!");
+            this.startUp();
+        }
+        else if (state == GameState.LOGIN_SCREEN)
+        {
+            // Player just logged out
+            System.out.println("Player logged out!");
+            this.shutDown();
+        }
+    }
     @Override
-    protected void startUp() throws Exception
+    protected void startUp()
     {
         // Add the inventory overlay
         overlayManager.add(overlay);
+        this.panelStartUp();
+        isRunning = true;
 
         goldDropsObject = new ProfitTrackerGoldDrops(client, itemManager);
 
@@ -68,17 +117,83 @@ public class ProfitTrackerPlugin extends Plugin
 
     }
 
+
+    private void panelStartUp(){
+        panel = new ProfitTrackerPanel(this);
+
+        navButton = NavigationButton.builder()
+                .tooltip("Profit Tracker")
+                .icon(ICON) // your Image here (BufferedImage)
+                .panel(panel)
+                .build();
+
+        clientToolbar.addNavigation(navButton);
+    }
+
+    public void resetProgress()
+    {
+        this.setSecondsElapsed(0);
+        overlay.setSecondsElapsed(0);
+        overlay.updateProfitValue(0);
+        totalProfit = 0;
+        startTickMillis = 0;
+        resetFlag = true;
+
+        configManager.unsetConfiguration(CONFIG_GROUP, "secondsElapsed");
+        configManager.unsetConfiguration(CONFIG_GROUP, "profitValue");
+        configManager.unsetConfiguration(CONFIG_GROUP, "startTickMillis");
+        this.shutDown();
+        this.startUp();
+
+    }
+
+    private long loadProfit()
+    {
+        Long savedProfit = configManager.getConfiguration(CONFIG_GROUP, TOTAL_PROFIT_KEY, Long.class);
+        return (savedProfit == null) ? 0 : savedProfit;
+    }
+
+//    private long loadStartTickMillis()
+//    {
+//        Long savedTime = configManager.getConfiguration(CONFIG_GROUP, START_TICK_MILLIS, Long.class);
+//        return (savedTime == null) ? 0 : savedTime;
+//    }
+
+
+    private void loadTime()
+    {
+        long savedTime = configManager.getConfiguration(CONFIG_GROUP, SECONDS_ELAPSED_KEY, Long.class);
+        if(savedTime > 0){
+            overlay.setSecondsElapsed(savedTime);
+            this.setSecondsElapsed(savedTime);
+        }
+    }
+
+    private void saveProgress()
+    {
+        long savedSeconds = overlay.getSecondsElapsed();
+        configManager.setConfiguration(CONFIG_GROUP, TOTAL_PROFIT_KEY, totalProfit);
+        configManager.setConfiguration(CONFIG_GROUP, SECONDS_ELAPSED_KEY, savedSeconds);
+        //configManager.setConfiguration(CONFIG_GROUP, START_TICK_MILLIS, startTickMillis);
+
+    }
+
     private void initializeVariables()
     {
         // value here doesn't matter, will be overwritten
         prevInventoryValue = -1;
 
         // profit begins at 0 of course
-        totalProfit = 0;
-
+        if(!resetFlag){
+            totalProfit = loadProfit();
+        }
+        else{
+            totalProfit = 0;
+            resetFlag = false;
+        }
+        loadTime();
         // this will be filled with actual information in startProfitTrackingSession
-        startTickMillis = 0;
-
+        startTickMillis = System.currentTimeMillis();
         // skip profit calculation for first tick, to initialize first inventory value
         skipTickForProfitCalculation = true;
 
@@ -94,11 +209,10 @@ public class ProfitTrackerPlugin extends Plugin
         Start tracking profit from now on
          */
 
-        initializeVariables();
+        //initializeVariables();
 
         // initialize timer
-        startTickMillis = System.currentTimeMillis();
-
+        //startTickMillis = System.currentTimeMillis();
         overlay.updateStartTimeMillies(startTickMillis);
 
         overlay.startSession();
@@ -107,10 +221,13 @@ public class ProfitTrackerPlugin extends Plugin
     }
 
     @Override
-    protected void shutDown() throws Exception
+    protected void shutDown()
     {
         // Remove the inventory overlay
         overlayManager.remove(overlay);
+        saveProgress();
+        isRunning = false;
+
 
     }
 

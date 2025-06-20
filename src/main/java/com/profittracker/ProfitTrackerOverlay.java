@@ -1,4 +1,7 @@
 package com.profittracker;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
@@ -13,11 +16,15 @@ import java.text.DecimalFormat;
 /**
  * The ProfitTrackerOverlay class is used to display profit values for the user
  */
+@Slf4j
 public class ProfitTrackerOverlay extends Overlay {
     private long profitValue;
     private long startTimeMillies;
     private boolean inProfitTrackSession;
+    @Getter @Setter
+    private long secondsElapsed;
 
+    private final ProfitTrackerPlugin plugin;
     private final ProfitTrackerConfig ptConfig;
     private final PanelComponent panelComponent = new PanelComponent();
 
@@ -25,9 +32,12 @@ public class ProfitTrackerOverlay extends Overlay {
         DecimalFormat df = new DecimalFormat("###,###,###");
         return df.format(value);
     }
+
+
     @Inject
-    private ProfitTrackerOverlay(ProfitTrackerConfig config)
+    private ProfitTrackerOverlay(ProfitTrackerPlugin plugin, ProfitTrackerConfig config)
     {
+        this.plugin = plugin;
         setPosition(OverlayPosition.ABOVE_CHATBOX_RIGHT);
         profitValue = 0L;
         ptConfig = config;
@@ -42,19 +52,25 @@ public class ProfitTrackerOverlay extends Overlay {
      */
     @Override
     public Dimension render(Graphics2D graphics) {
-        String titleText = "Profit Tracker:";
-        long secondsElapsed;
+        String titleText = "Profit Tracker UPDATED:";
         long profitRateValue;
+        if (plugin.isRunning())
+        {
+            if(plugin.getSecondsElapsed() > 0){
+                secondsElapsed = plugin.getSecondsElapsed() + ((System.currentTimeMillis() - startTimeMillies) / 1000);
 
-        if (startTimeMillies > 0)
-        {
-            secondsElapsed = (System.currentTimeMillis() - startTimeMillies) / 1000;
+            }
+            else{
+                secondsElapsed = (System.currentTimeMillis() - startTimeMillies) / 1000;
+            }
+
         }
-        else
-        {
-            // there was never any session
-            secondsElapsed = 0;
-        }
+//        else
+//        {
+//            // there was never any session
+//            secondsElapsed = 0;
+//
+//        }
 
         profitRateValue = calculateProfitHourly(secondsElapsed, profitValue);
 
