@@ -1,3 +1,10 @@
+# Profit Tracker Plugin
+
+**NOTE:** This is a fork of the original plugin by [nofatigue's runelite-profit-tracker](https://github.com/nofatigue/runelite-profit-tracker).  
+I forked the project and enhanced it by adding **State Persistence** and **Debug Panel**, enabling the plugin to save and load profit data across RuneLite client restarts.  
+Active development on this fork has been paused, but the plugin remains available for use and further contributions are welcome.
+
+...
  <img src="https://oldschool.runescape.wiki/images/thumb/3/36/Coins_10000_detail.png/1024px-Coins_10000_detail.png?e07e3" width="200" title="hover text">
  
  
